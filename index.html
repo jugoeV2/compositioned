@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image to Music Converter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <!-- File input (hidden) -->
+      <input type="file" id="file-input" accept="image/*" style="display: none;">
+      
+      <!-- Image display area -->
+      <div class="image-area">
+        <div id="drop-zone">
+          <p id="drop-text">DROP IMAGE HERE (or click to upload)</p>
+        </div>
+        <div id="image-container" style="display: none;">
+          <img id="uploaded-image" src="" alt="Uploaded Image">
+          <button id="remove-button">X</button>
+        </div>
+      </div>
+      
+      <!-- Controls -->
+      <div class="controls-grid">
+        <div class="control-column">
+          <div class="control">
+            <span class="control-label">SATURATION / RICHNESS: <span id="saturation-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="saturation">
+          </div>
+          <div class="control">
+            <span class="control-label">CONTRAST / TEMPO: <span id="contrast-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="contrast">
+          </div>
+          <div class="control">
+            <span class="control-label">WHITES / COMPLEXITY: <span id="whites-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="whites">
+          </div>
+        </div>
+        
+        <div class="control-column">
+          <div class="control">
+            <span class="control-label">BLACKS / KEY: <span id="blacks-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="blacks">
+          </div>
+          <div class="control">
+            <span class="control-label">LUMONOSITY / FILTER: <span id="luminosity-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="luminosity">
+          </div>
+          <div class="control">
+            <span class="control-label">REDS / KICKS: <span id="reds-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="reds">
+          </div>
+        </div>
+        
+        <div class="control-column">
+          <div class="control">
+            <span class="control-label">ORANGE / PERCUSSION: <span id="oranges-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="oranges">
+          </div>
+          <div class="control">
+            <span class="control-label">YELLOW / SNARE: <span id="yellows-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="yellows">
+          </div>
+          <div class="control">
+            <span class="control-label">GREEN / NATURE SOUND: <span id="greens-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="greens">
+          </div>
+        </div>
+        
+        <div class="control-column">
+          <div class="control">
+            <span class="control-label">BLUES / ARPEGGIATOR: <span id="blues-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="blues">
+          </div>
+          <div class="control">
+            <span class="control-label">PURPLE / SYNTH SOUND: <span id="purples-value">50</span>%</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="purples">
+          </div>
+        </div>
+      </div>
+      
+      <!-- Transport controls -->
+      <div class="transport-controls">
+        <button id="play-button" disabled>PLAY</button>
+        <button id="export-button" disabled>EXPORT</button>
+      </div>
+      
+      <!-- Hidden canvas for image analysis -->
+      <canvas id="hidden-canvas" style="display: none;"></canvas>
+    </div>
+  </div>
+</body>
+</html>

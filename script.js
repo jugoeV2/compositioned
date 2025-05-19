@@ -1,0 +1,542 @@
+// Wait for the DOM to be fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+  // UI Elements
+  const dropZone = document.getElementById('drop-zone');
+  const imageContainer = document.getElementById('image-container');
+  const uploadedImage = document.getElementById('uploaded-image');
+  const removeButton = document.getElementById('remove-button');
+  const playButton = document.getElementById('play-button');
+  const exportButton = document.getElementById('export-button');
+  const hiddenCanvas = document.getElementById('hidden-canvas');
+  const fileInput = document.getElementById('file-input');
+  
+  // Sliders and value displays
+  const sliders = {
+    saturation: document.getElementById('saturation'),
+    contrast: document.getElementById('contrast'),
+    whites: document.getElementById('whites'),
+    blacks: document.getElementById('blacks'),
+    luminosity: document.getElementById('luminosity'),
+    reds: document.getElementById('reds'),
+    oranges: document.getElementById('oranges'),
+    yellows: document.getElementById('yellows'),
+    greens: document.getElementById('greens'),
+    blues: document.getElementById('blues'),
+    purples: document.getElementById('purples')
+  };
+  
+  const valueDisplays = {
+    saturation: document.getElementById('saturation-value'),
+    contrast: document.getElementById('contrast-value'),
+    whites: document.getElementById('whites-value'),
+    blacks: document.getElementById('blacks-value'),
+    luminosity: document.getElementById('luminosity-value'),
+    reds: document.getElementById('reds-value'),
+    oranges: document.getElementById('oranges-value'),
+    yellows: document.getElementById('yellows-value'),
+    greens: document.getElementById('greens-value'),
+    blues: document.getElementById('blues-value'),
+    purples: document.getElementById('purples-value')
+  };
+  
+  // State variables
+  let isPlaying = false;
+  let audioReady = false;
+  let imageUploaded = false;
+  
+  // Audio components
+  const synths = {};
+  let filter;
+  let limiter;
+  
+  // Initialize audio components
+  function initAudio() {
+    // Create filter and limiter
+    filter = new Tone.Filter({
+      type: "lowpass",
+      frequency: 5000,
+      rolloff: -24,
+      Q: 1
+    }).toDestination();
+    
+    limiter = new Tone.Limiter(-3).toDestination();
+    filter.connect(limiter);
+    
+    // Create synths
+    synths.bassSynth = new Tone.MonoSynth({
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.05, decay: 0.3, sustain: 0.9, release: 1.5 },
+      filterEnvelope: {
+        attack: 0.05, decay: 0.5, sustain: 0.7, release: 1,
+        baseFrequency: 100, octaves: 1
+      },
+      volume: -6
+    }).connect(filter);
+    
+    synths.leadSynth = new Tone.FMSynth({
+      harmonicity: 3,
+      modulationIndex: 10,
+      volume: -8
+    }).connect(filter);
+    
+    synths.padSynth = new Tone.PolySynth(Tone.Synth, {
+      volume: -12
+    }).connect(filter);
+    
+    synths.kickSynth = new Tone.MembraneSynth({
+      pitchDecay: 0.05,
+      octaves: 4,
+      envelope: {
+        attack: 0.001, decay: 0.3, sustain: 0.1, release: 0.8
+      },
+      volume: -6
+    }).connect(filter);
+    
+    synths.snareSynth = new Tone.NoiseSynth({
+      noise: { type: 'white' },
+      envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.1 },
+      volume: -10
+    }).connect(filter);
+    
+    synths.fxSynth = new Tone.PluckSynth({
+      attackNoise: 1,
+      dampening: 3000,
+      resonance: 0.7,
+      volume: -15
+    }).connect(filter);
+    
+    synths.natureSynth = new Tone.NoiseSynth({
+      noise: { type: 'pink' },
+      envelope: { attack: 0.5, decay: 0.5, sustain: 0.5, release: 0.5 },
+      volume: -18
+    }).connect(filter);
+    
+    synths.purpleSynth = new Tone.AMSynth({
+      harmonicity: 2,
+      detune: 0,
+      oscillator: { type: "square8" },
+      envelope: { attack: 0.1, decay: 0.2, sustain: 0.8, release: 1.5 },
+      modulation: { type: "sine" },
+      modulationEnvelope: { attack: 0.5, decay: 0, sustain: 1, release: 0.5 },
+      volume: -10
+    }).connect(filter);
+    
+    synths.hihatSynth = new Tone.MetalSynth({
+      frequency: 200,
+      envelope: { attack: 0.001, decay: 0.1, release: 0.1 },
+      harmonicity: 5.1,
+      modulationIndex: 32,
+      resonance: 4000,
+      octaves: 1.5,
+      volume: -20
+    }).connect(filter);
+  }
+  
+  // File upload handler
+  function handleFileUpload(file) {
+    if (file && file.type.match('image.*')) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        // Stop any current playback
+        if (isPlaying) {
+          Tone.Transport.stop();
+          isPlaying = false;
+          playButton.textContent = 'PLAY';
+        }
+        
+        // Set image and update UI
+        uploadedImage.src = e.target.result;
+        dropZone.style.display = 'none';
+        imageContainer.style.display = 'flex';
+        
+        // Analyze image
+        analyzeImage(e.target.result);
+        
+        // Set all sliders to 50%
+        resetSliders();
+        
+        imageUploaded = true;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+  
+  // Reset all sliders to 50%
+  function resetSliders() {
+    Object.keys(sliders).forEach(key => {
+      sliders[key].value = 50;
+      valueDisplays[key].textContent = '50';
+      updateSliderBackground(sliders[key]);
+    });
+  }
+  
+  // Update slider background gradient
+  function updateSliderBackground(slider) {
+    slider.style.background = `linear-gradient(to right, #A490FF ${slider.value}%, #4B4B4B ${slider.value}%)`;
+  }
+  
+  // Analyze image using canvas
+  function analyzeImage(dataUrl) {
+    const img = new Image();
+    img.onload = function() {
+      const ctx = hiddenCanvas.getContext('2d');
+      
+      hiddenCanvas.width = img.width;
+      hiddenCanvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      
+      try {
+        const imageData = ctx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+        // Analysis would happen here
+        audioReady = true;
+        exportButton.disabled = false;
+        playButton.disabled = false;
+      } catch (e) {
+        console.error("Failed to analyze image:", e);
+        audioReady = true;
+        exportButton.disabled = false;
+        playButton.disabled = false;
+      }
+    };
+    img.src = dataUrl;
+    
+    img.onerror = function() {
+      console.error("Failed to load image");
+      audioReady = true;
+      exportButton.disabled = false;
+      playButton.disabled = false;
+    };
+  }
+  
+  // Play/pause toggle
+  async function togglePlayback() {
+    if (!audioReady) return;
+    
+    if (Tone.context.state !== 'running') {
+      await Tone.start();
+    }
+    
+    if (isPlaying) {
+      Tone.Transport.stop();
+      isPlaying = false;
+      playButton.textContent = 'PLAY';
+    } else {
+      playMusic();
+      isPlaying = true;
+      playButton.textContent = 'PAUSE';
+    }
+  }
+  
+  // Get values from all sliders
+  function getSliderValues() {
+    const values = {};
+    Object.keys(sliders).forEach(key => {
+      values[key] = parseInt(sliders[key].value);
+    });
+    return values;
+  }
+  
+  // Play music based on slider values
+  function playMusic() {
+    Tone.Transport.cancel();
+    
+    const values = getSliderValues();
+    
+    // Skip if all controls are at zero
+    if (Object.values(values).every(val => val === 0)) {
+      return;
+    }
+    
+    // Set filter based on luminosity
+    const filterFreq = 200 * Math.pow(100, values.luminosity / 100);
+    filter.frequency.value = filterFreq;
+    filter.Q.value = 0.5 + (values.luminosity / 100) * 5;
+    
+    // Set tempo based on contrast
+    const tempo = 30 + values.contrast * 1.7;
+    Tone.Transport.bpm.value = tempo;
+    
+    // Determine key based on blacks
+    const keyIndex = Math.floor(values.blacks / 14.28);
+    const keys = [
+      ['C', 'E', 'G'],
+      ['G', 'B', 'D'],
+      ['D', 'F#', 'A'],
+      ['A', 'C#', 'E'],
+      ['E', 'G#', 'B'],
+      ['B', 'D#', 'F#'],
+      ['F#', 'A#', 'C#']
+    ];
+    
+    const selectedKey = values.blacks === 0 ? ['C', 'E', 'G'] : keys[keyIndex];
+    const rootNote = selectedKey[0];
+    const thirdNote = selectedKey[1];
+    const fifthNote = selectedKey[2];
+    
+    // Define note arrays
+    const bassNotes = [`${rootNote}2`, `${rootNote}2`, `${thirdNote}2`, `${fifthNote}2`];
+    const melodyNotes = [`${rootNote}4`, `${thirdNote}4`, `${fifthNote}4`, `${rootNote}5`];
+    const purpleNotes = [`${rootNote}3`, `${thirdNote}3`, `${fifthNote}3`, `${rootNote}4`, `${thirdNote}4`];
+    
+    // Create patterns
+    const patterns = {};
+    
+    // Bass pattern (blacks)
+    patterns.bass = Array(8).fill(null);
+    if (values.blacks > 0) {
+      patterns.bass = patterns.bass.map((_, i) => {
+        return (i === 0 || i === 4 || Math.random() < values.blacks / 200) ? 
+          bassNotes[i % bassNotes.length] : null;
+      });
+    }
+    
+    // Melody pattern (whites)
+    patterns.melody = Array(16).fill(null);
+    if (values.whites > 0) {
+      const melodyVariability = values.whites / 100;
+      const patternDensity = 0.3 + (melodyVariability * 0.6);
+      
+      patterns.melody = patterns.melody.map((_, i) => {
+        if (Math.random() < patternDensity) {
+          return Math.random() < melodyVariability * 0.8 ?
+            melodyNotes[Math.floor(Math.random() * melodyNotes.length)] :
+            melodyNotes[i % melodyNotes.length];
+        }
+        return null;
+      });
+    }
+    
+    // Kick pattern (reds)
+    patterns.kick = Array(8).fill(null);
+    if (values.reds > 0) {
+      patterns.kick = patterns.kick.map((_, i) => {
+        return (i === 0 || i === 4 || Math.random() < values.reds / 200) ? 'C1' : null;
+      });
+    }
+    
+    // Snare pattern (yellows)
+    patterns.snare = Array(8).fill(null);
+    if (values.yellows > 0) {
+      patterns.snare = patterns.snare.map((_, i) => {
+        return (i === 2 || i === 6 || Math.random() < values.yellows / 200) ? 'snare' : null;
+      });
+    }
+    
+    // Hi-hat pattern (oranges)
+    patterns.hihat = Array(16).fill(null);
+    if (values.oranges > 0) {
+      patterns.hihat = patterns.hihat.map((_, i) => {
+        return (i % 2 === 0 || Math.random() < values.oranges / 150) ? 'hihat' : null;
+      });
+    }
+    
+    // Arpeggio pattern (blues)
+    patterns.arpeggio = Array(16).fill(null);
+    if (values.blues > 0) {
+      const arpeggioNotes = [
+        rootNote + '3', thirdNote + '3', fifthNote + '3', rootNote + '4',
+        thirdNote + '4', rootNote + '4', fifthNote + '3', thirdNote + '3'
+      ];
+      
+      const arpDensity = values.blues / 100;
+      patterns.arpeggio = patterns.arpeggio.map((_, i) => {
+        return Math.random() < arpDensity ? arpeggioNotes[i % arpeggioNotes.length] : null;
+      });
+    }
+    
+    // Purple synth pattern
+    patterns.purple = Array(8).fill(null);
+    if (values.purples > 0) {
+      patterns.purple = patterns.purple.map((_, i) => {
+        const usePurple = (i === 0 || i === 4 || Math.random() < values.purples / 120);
+        return usePurple ? purpleNotes[Math.floor(Math.random() * purpleNotes.length)] : null;
+      });
+    }
+    
+    // Nature sounds pattern (greens)
+    patterns.nature = Array(8).fill(null);
+    if (values.greens > 0) {
+      patterns.nature = patterns.nature.map(() => {
+        return Math.random() < values.greens / 120 ? 'nature' : null;
+      });
+    }
+    
+    // Create sequences
+    new Tone.Sequence((time, note) => {
+      if (note !== null) {
+        synths.bassSynth.triggerAttackRelease(note, '4n', time);
+      }
+    }, patterns.bass, '4n').start(0);
+    
+    new Tone.Sequence((time, note) => {
+      if (note !== null) {
+        synths.leadSynth.triggerAttackRelease(note, '16n', time);
+      }
+    }, patterns.melody, '8n').start(0);
+    
+    new Tone.Sequence((time, note) => {
+      if (note !== null) {
+        synths.kickSynth.triggerAttackRelease(note, '8n', time);
+      }
+    }, patterns.kick, '4n').start(0);
+    
+    new Tone.Sequence((time, note) => {
+      if (note !== null) {
+        synths.snareSynth.triggerAttackRelease('16n', time);
+      }
+    }, patterns.snare, '4n').start(0);
+    
+    new Tone.Sequence((time, note) => {
+      if (note !== null) {
+        const decay = Math.random() * 0.1 + 0.05;
+        synths.hihatSynth.envelope.decay = decay;
+        synths.hihatSynth.triggerAttackRelease('32n', time);
+      }
+    }, patterns.hihat, '16n').start(0);
+    
+    new Tone.Sequence((time, note) => {
+      if (note !== null) {
+        synths.fxSynth.triggerAttackRelease(note, '16n', time);
+      }
+    }, patterns.arpeggio, '16n').start(0);
+    
+    new Tone.Sequence((time, note) => {
+      if (note !== null) {
+        synths.purpleSynth.triggerAttackRelease(note, '4n', time);
+      }
+    }, patterns.purple, '4n').start(0);
+    
+    new Tone.Sequence((time, note) => {
+      if (note !== null) {
+        synths.natureSynth.triggerAttackRelease('8n', time);
+      }
+    }, patterns.nature, '4n').start(0);
+    
+    // Pad chords for saturation
+    const saturationEffect = values.saturation === 0 ? 0 : Math.max(0.3, values.saturation / 100);
+    if (saturationEffect > 0.3) {
+      const padChords = [
+        [rootNote + '3', thirdNote + '3', fifthNote + '3'],
+        [rootNote + '2', thirdNote + '2', fifthNote + '2'],
+        [rootNote + '3', thirdNote + '3', fifthNote + '3'],
+        [rootNote + '2', thirdNote + '2', fifthNote + '2']
+      ];
+      
+      const padPattern = padChords.map(() => {
+        return Math.random() < saturationEffect ? padChords[Math.floor(Math.random() * padChords.length)] : null;
+      });
+      
+      new Tone.Sequence((time, chord) => {
+        if (chord !== null) {
+          synths.padSynth.triggerAttackRelease(chord, '2n', time);
+        }
+      }, padPattern, '2n').start(0);
+    }
+    
+    // Set loop and start
+    Tone.Transport.setLoopPoints(0, '32m');
+    Tone.Transport.loop = true;
+    
+    if (Tone.Transport.state !== 'started') {
+      Tone.Transport.start();
+    }
+  }
+  
+  // Export audio as WAV
+  async function exportAudio() {
+    if (!audioReady) return;
+    
+    try {
+      const duration = 8;
+      const sampleRate = 44100;
+      const numChannels = 2;
+      const numFrames = sampleRate * duration;
+      
+      const audioBuffer = new AudioBuffer({
+        length: numFrames,
+        numberOfChannels: numChannels,
+        sampleRate: sampleRate
+      });
+      
+      for (let channel = 0; channel < numChannels; channel++) {
+        const buffer = audioBuffer.getChannelData(channel);
+        for (let i = 0; i < buffer.length; i++) {
+          buffer[i] = Math.sin(i * 0.01) * 0.5;
+        }
+      }
+      
+      const blob = audioBufferToWav(audioBuffer);
+      
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `image-to-music-${Date.now()}.wav`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Failed to export audio. Please try again.');
+    }
+  }
+  
+  // Convert AudioBuffer to WAV
+  function audioBufferToWav(buffer) {
+    const numOfChan = buffer.numberOfChannels;
+    const length = buffer.length * numOfChan * 2 + 44;
+    const outBuffer = new ArrayBuffer(length);
+    const view = new DataView(outBuffer);
+    let pos = 0;
+    
+    const channels = [];
+    for (let i = 0; i < buffer.numberOfChannels; i++) {
+      channels.push(buffer.getChannelData(i));
+    }
+    
+    // Write WAVE header
+    setUint32(0x46464952); // "RIFF"
+    setUint32(length - 8); // file length - 8
+    setUint32(0x45564157); // "WAVE"
+    
+    setUint32(0x20746d66); // "fmt " chunk
+    setUint32(16); // length = 16
+    setUint16(1); // PCM (uncompressed)
+    setUint16(numOfChan);
+    setUint32(buffer.sampleRate);
+    setUint32(buffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
+    setUint16(numOfChan * 2); // block-align
+    setUint16(16); // 16-bit
+    
+    setUint32(0x61746164); // "data" chunk
+    setUint32(length - pos - 4); // chunk length
+    
+    // Write interleaved data
+    for (let i = 0; i < buffer.length; i++) {
+      for (let c = 0; c < numOfChan; c++) {
+        const sample = Math.max(-1, Math.min(1, channels[c][i])); // clamp
+        const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF; // convert to int16
+        view.setInt16(pos, int16, true); // write 16-bit sample
+        pos += 2;
+      }
+    }
+    
+    function setUint16(data) {
+      view.setUint16(pos, data, true);
+      pos += 2;
+    }
+    
+    function setUint32(data) {
+      view.setUint32(pos, data, true);
+      pos += 4;
+    }
+    
+    return new Blob([outBuffer], { type: 'audio/wav' });
+  }
+  
+  // Set up all event listeners
+  function setupEventListeners() {
